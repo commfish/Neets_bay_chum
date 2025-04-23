@@ -1,0 +1,224 @@
+---
+title: "NSRAA compare survival from tow and control - coho"
+output:
+  html_notebook:
+    theme: united
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+
+knitr::opts_chunk$set(out.width = "100%", fig.width = 10, fig.height = 5)
+
+# dirt <- "~/projects/nsraa_hatchery_release_stray"
+
+```
+
+# Data
+
+Recovered tags included both rack and harvest.
+
+```{r data, echo=FALSE}
+tag_dat <- tibble(year = factor(rep(rep(c(2010, 2014, 2015, 2016), each = 2), 2)), # return year
+                  group = rep(c("control", "tow", "control", "tow"), 4),
+                  type = rep(c("recover", "total_tagged"), each = 8),
+                  value = c(189, 228, 149, 163, 11, 165, 61, 65,
+                            19117, 14657, 32734, 37418, 30608, 38784, 38746, 34205))
+
+surv_dat <- tag_dat %>%
+  pivot_wider(names_from = type, values_from = value) %>%
+  mutate(dead = total_tagged - recover)
+
+surv_dat %>% relocate(total_tagged, .after = group)
+
+```
+
+
+# $\chi^2$ test
+
+```{r, echo=FALSE}
+# automate chi-sq tests 
+do_chisq <- function(dat_in, rtn_yr) {
+  test_yr <- 
+    dat_in %>%
+    pivot_longer(c(recover,dead), names_to = "type") %>%
+    select(-total_tagged) %>%
+    filter(year == rtn_yr) %>%
+    pivot_wider(names_from = group, values_from = value) %>%
+    select(control, tow)
+  chisq.test(test_yr, simulate.p.value = TRUE)
+} # surv
+
+rtn_yrs <- c(2010, 2014:2016)
+chisq_out <- lapply(rtn_yrs, function(yr) do_chisq(surv_dat, yr))
+names(chisq_out) = rtn_yrs
+
+```
+
+$\chi^2$ tables
+
+2010
+```{r, echo=FALSE}
+print("Observed")
+chisq_out$`2010`$observed
+
+print("Expected")
+chisq_out$`2010`$expected
+
+```
+
+2014
+```{r, echo=FALSE}
+print("Observed")
+chisq_out$`2014`$observed
+
+print("Expected")
+chisq_out$`2014`$expected
+
+```
+
+2015
+```{r, echo=FALSE}
+print("Observed")
+chisq_out$`2015`$observed
+
+print("Expected")
+chisq_out$`2015`$expected
+
+```
+
+2016
+```{r, echo=FALSE}
+print("Observed")
+chisq_out$`2016`$observed
+
+print("Expected")
+chisq_out$`2016`$expected
+
+```
+
+*p*-values
+
+```{r, echo=FALSE}
+p <- sapply(chisq_out, function(out) out$p.value)
+ 
+p %>%
+  round(., 3) %>%
+  ifelse(. < 0.001, " <0.001", .) %>%
+  noquote
+
+```
+
+Combined *p*-value with Fisher's method
+
+```{r, echo=FALSE}
+metap::sumlog(p)
+
+```
+
+
+# Binomial regression model
+
+I fitted a binomial model with proportions for dead/alive as the response variable and year, release method and the interaction term between year and release method as the explanatory variables. The intercept was removed in the model for easier interpretations.
+
+```{r}
+# model
+surv <- glm(cbind(recover, dead) ~ year*group - 1 , family = binomial, data = surv_dat)
+
+```
+
+```{r, echo=FALSE}
+# estimates and SE
+est <- coef(surv)
+
+# delta method
+se <- msm::deltamethod(~ exp(x1+x5)/(1+exp(x1+x5)) - exp(x1)/(1+exp(x1)), est, vcov(surv))
+
+diff <- plogis(est[1]+est[5]) - plogis(est[1])
+
+ci <- diff + c(-1, 1)* qnorm(0.975)* se
+
+```
+
+The difference in survivals between the towed and control groups was estimated for each year. For example, in 2010, the difference in survivals between release methods was `r diff` (95% CI = (`r ci[1]`, `r ci[2]`)).
+
+Below showed the model summary. The coefficients were in logit scale.
+
+```{r}
+summary(surv)
+
+```
+
+Table below shows the calculations for survival estimates.
+
+| Return year   | Control   | Towed   |
+| :------------ | :-------- | :------ |
+| 2010          | $logit^{-1}(\beta_{yr2010})$ | $logit^{-1}(\beta_{yr2010} + \beta_{towed})$ |
+| 2014          | $logit^{-1}(\beta_{yr2014})$ | $logit^{-1}(\beta_{yr2014} + \beta_{towed} + \beta_{yr2014\times towed})$ |
+| 2015          | $logit^{-1}(\beta_{yr2015})$ | $logit^{-1}(\beta_{yr2015} + \beta_{towed} + \beta_{yr2015\times towed})$ |
+| 2016          | $logit^{-1}(\beta_{yr2016})$ | $logit^{-1}(\beta_{yr2016} + \beta_{towed} + \beta_{yr2016\times towed})$ |
+
+```{r, echo=FALSE}
+# estimates and SE
+est <- coef(surv)
+
+# delta method
+b2010c <- plogis(est[1]) %>% round(., 5)
+se2010c <- msm::deltamethod(~ exp(x1)/(1+exp(x1)), est, vcov(surv)) %>% round(., 5)
+b2010t <- plogis(est[1] + est[5]) %>% round(., 5)
+se2010t <- msm::deltamethod(~ exp(x1+x5)/(1+exp(x1+x5)), est, vcov(surv)) %>% round(., 5)
+
+b2014c <- plogis(est[2]) %>% round(., 5)
+se2014c <- msm::deltamethod(~ exp(x2)/(1+exp(x2)), est, vcov(surv)) %>% round(., 5)
+b2014t <- plogis(est[2] + est[5] + est[6]) %>% round(., 5)
+se2014t <- msm::deltamethod(~ exp(x2+x5+x6)/(1+exp(x2+x5+x6)), est, vcov(surv)) %>% round(., 5)
+
+b2015c <- plogis(est[3]) %>% round(., 5)
+se2015c <- msm::deltamethod(~ exp(x3)/(1+exp(x3)), est, vcov(surv)) %>% round(., 5)
+b2015t <- plogis(est[3] + est[5] + est[7]) %>% round(., 5)
+se2015t <- msm::deltamethod(~ exp(x3+x5+x7)/(1+exp(x3+x5+x7)), est, vcov(surv)) %>% round(., 5)
+
+b2016c <- plogis(est[4]) %>% round(., 5)
+se2016c <- msm::deltamethod(~ exp(x4)/(1+exp(x4)), est, vcov(surv)) %>% round(., 5)
+b2016t <- plogis(est[4] + est[5] + est[8]) %>% round(., 5)
+se2016t <- msm::deltamethod(~ exp(x4+x5+x8)/(1+exp(x4+x5+x8)), est, vcov(surv)) %>% round(., 5)
+
+```
+
+The estimated survivals from the model.
+
+| Return year   | Control (SE)  | Towed (SE)  |
+| :------------ | :------------ | :---------- |
+| 2010          | `r paste0(b2010c, " (", se2010c, ")")` | `r paste0(b2010t, " (", se2010t, ")")` |
+| 2014          | `r paste0(b2014c, " (", se2014c, ")")` | `r paste0(b2014t, " (", se2014t, ")")` |
+| 2015          | `r paste0(b2015c, " (", se2015c, ")")` | `r paste0(b2015t, " (", se2015t, ")")` |
+| 2016          | `r paste0(b2016c, " (", se2016c, ")")` | `r paste0(b2016t, " (", se2016t, ")")` |
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
