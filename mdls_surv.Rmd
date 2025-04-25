@@ -1,11 +1,11 @@
 ---
-title: "NSRAA compare survival from tow and control - coho"
+title: "SSRAA compare homing from tow and control - chum samon Neets Bay"
 output:
-  html_notebook:
-    theme: united
-    toc: yes
   html_document:
     df_print: paged
+    toc: yes
+  html_notebook:
+    theme: united
     toc: yes
 editor_options:
   chunk_output_type: inline
@@ -118,7 +118,7 @@ p %>%
 Combined *p*-value with Fisher's method
 
 ```{r, echo=FALSE}
-metap::sumlog(p)
+#metap::sumlog(p)
 
 ```
 

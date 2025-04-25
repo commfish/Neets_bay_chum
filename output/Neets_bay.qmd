@@ -1,0 +1,421 @@
+---
+title: "SSRAA compare homing from tow and control - chum samon Neets Bay"
+author: "Bobby Hsu, Lorna Wilson, Sara Miller"
+date: last-modified
+format:
+  pdf:
+    toc: true
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, message = FALSE, 
+                      error=FALSE, fig.pos = 'H', out.width = '95%', out.width = "100%", fig.height = 5)
+```
+
+```{r load}
+library(here)
+library(fs)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(quarto)
+library(gt) # tables
+library(lme4) # glmer package
+library(modelsummary)
+library(broom.mixed)
+library(tibble)
+library(emmeans)
+
+# data.directory <- file.path('data')
+results.directory <- file.path('output')
+```
+
+# Objective
+To increase the marine survival of Neets Bay chum salmon by reducing predation pressure of out-migrating fry, while not negatively impacting the homing behavior, fry were transported outside of Neets Bay for release. There were three release strategies (tender, net, control). The control group was released from saltwater pens at the head of Neets Bay, adjacent to the hatchery. Evaluation of homing by release group was based on salmon harvested in the terminal areas (Neets Bay hatchery rack, common property commercial and cost recovery in terminal areas) and non-terminal areas (fisheries and areas outside of Neets Bay), and the otolith recovery mark (distinguishes release strategy). Details of the study can be found in Frost et al. 2021.
+
+The objective of the following analysis is to assess the effects of release strategy (towed net pens, tender, control) on the fish homing behavior of Neets Bay hatchery chum salmon. If the ratio of otolith recoveries for the transport groups (net, tender) in the two sample locations (terminal, non-terminal) compared is significantly different (*p*<0.05) compared to the ratio observed for the control group, then the transport release strategy may affect homing behavior.
+
+# Data
+```{r}
+#| label: tbl-data
+#| tbl-cap: Neets Bay chum salmon data
+#| tbl-pos: H
+tag_dat <- tibble(
+  year = rep(c(2023, 2024), each = 3), # return year
+  group = rep(c("control", "net", "tender"), 2),
+  terminal = c(327, 258, 338, 320, 250, 330), 
+  non_terminal = c(205, 178, 239, 200, 170, 230),
+  total = terminal + non_terminal)
+
+  gt_tbl<-gt(tag_dat) %>%
+    cols_align(align = "center", columns = everything()) %>%
+    cols_label(year = "Year",
+               group = "Group",
+               terminal = "Terminal return",
+               non_terminal = "Non-terminal return",
+               total = "Total")
+  gt_tbl
+```
+
+```{r}
+#| label: fig-data
+#| layout-ncol: 2
+#| fig-cap: Neets Bay chum salmon data. 
+#| fig-pos: H
+#| fig-subcap: 
+#|   - Neets Bay chum salmon data, 2023.
+#|   - Neets Bay chum salmon data, 2024.
+long_data <- tag_dat %>%
+  pivot_longer(cols = c(terminal, non_terminal), 
+               names_to = "home", 
+               values_to = "value")
+
+long_data %>%
+  filter(year == 2023) %>%
+ggplot(., aes(fill = home, x = group, y = value)) +
+geom_bar(position='dodge', stat='identity') +
+  xlab('') +
+  ylab('Number of otoliths') +
+  scale_x_discrete(labels = c("control" = "Control", "net" = "Net", "tender" = "Tender")) +
+  scale_fill_manual('', values=c("#FFB3BA", "#FFDFBA"),
+                    labels = c("Non-terminal", "Terminal"))+
+  theme_minimal() +
+  theme(panel.background = element_rect(fill = "white"),
+        plot.background = element_rect(fill = "white"))
+
+long_data %>%
+  filter(year == 2024) %>%
+ggplot(., aes(fill = home, x = group, y = value)) +
+geom_bar(position='dodge', stat='identity') +
+  xlab('') +
+  ylab('Number of otoliths') +
+  scale_x_discrete(labels = c("control" = "Control", "net" = "Net", "tender" = "Tender")) +
+  scale_fill_manual('', values=c("#FFB3BA", "#FFDFBA"),
+                    labels = c("Non-terminal", "Terminal"))+
+  theme_minimal() +
+  theme(panel.background = element_rect(fill = "white"),
+        plot.background = element_rect(fill = "white"))
+```
+
+# Method #1: $\chi^2$ Test
+## Net versus Tender
+```{r chi_square_tender_net}
+# automate chi-sq tests 
+do_chisq <- function(dat_in, rtn_yr) {
+  test_yr <- 
+    dat_in %>%
+    pivot_longer(c(terminal, non_terminal), names_to = "type") %>%
+    select(-total) %>%
+    filter(year == rtn_yr) %>%
+    pivot_wider(names_from = group, values_from = value) %>%
+    select(net, tender)
+  chisq.test(test_yr, simulate.p.value = TRUE)
+} # homing
+
+rtn_yrs <- c(2023, 2024)
+chisq_out <- lapply(rtn_yrs, function(yr) do_chisq(tag_dat, yr))
+names(chisq_out) = rtn_yrs
+
+```
+
+
+```{r}
+#| label: tbl-tender-net-2023a
+#| tbl-cap: Chi-Squared observed counts, 2023
+#| tbl-pos: H
+df<-chisq_out$`2023`$observed
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, align = "c")
+```
+
+```{r}
+#| label: tbl-tender-net-2023b
+#| tbl-cap: Chi-Squared expected counts, 2023
+#| tbl-pos: H
+df<-chisq_out$`2023`$expected
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, align = "c", digits = 2)
+```
+
+```{r}
+#| label: tbl-tender-net-2024a
+#| tbl-cap: Chi-squared observed counts, 2024
+#| tbl-pos: H
+df<-chisq_out$`2024`$observed
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, align = "c")
+```
+
+```{r}
+#| label: tbl-tender-net-2024b
+#| tbl-cap: Chi-squared expected counts, 2024
+#| tbl-pos: H
+df<-chisq_out$`2024`$expected
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, digits= 2, align = "c")
+```
+
+
+# Results #1
+## *p*-values
+```{r p_values_tender_net}
+p <- sapply(chisq_out, function(out) out$p.value)
+ 
+p %>%
+  round(., 3) %>%
+  ifelse(. < 0.001, " <0.001", .) %>%
+  noquote
+
+```
+
+## Combined *p*-value with Fisher's method
+
+```{r combined}
+# sumlog code om the metap package; package would not load so copied code directly
+sumlog <-
+function(p, log.p = FALSE, log.input = FALSE) {
+   if(log.input) {
+      keep <- p <= 0
+   } else {
+      keep <- (p > 0) & (p <= 1)
+   }
+   invalid <- sum(1L * keep) < 2
+   if(invalid) {
+      warning("Must have at least two valid p values")
+      res <- list(chisq = NA_real_, df = NA_integer_,
+         p = NA_real_, validp = p[keep])
+   } else {
+      if(log.input) {
+         lnp <- p[keep] # already logged
+      } else {
+         lnp <- log(p[keep])
+      }
+      chisq <- (-2) * sum(lnp)
+      df <- 2 * length(lnp)
+      if(length(lnp) != length(p)) {
+         warning("Some studies omitted")
+      }
+      res <- list(chisq = chisq, df = df,
+         p = pchisq(chisq, df, lower.tail = FALSE,
+            log.p = log.p), validp = p[keep])
+    }
+   class(res) <- c("sumlog", "metap")
+   res
+}
+print.sumlog <- function(x, ...) {
+   cat("chisq = ", x$chisq, " with df = ", x$df, " p = ", x$p, "\n")
+   invisible(x)
+}
+
+sumlog(p) 
+
+```
+
+# Method #2: Binomial regression model
+A binomial model with proportions for recoveries in terminal areas and recoveries in non-terminal areas as the response variable and release method as the explanatory variable.  Group is a fixed effect and year is included as a random intercept term accounting for variation across different years. Intercept is removed.
+
+```{r model data}
+# model
+tag_dat <- tibble(
+  year = rep(c(2023, 2024, 2025), each = 3), # return year
+  group = rep(c("control", "net", "tender"), 3),
+  terminal = c(327, 258, 338, 150, 550, 227, 450, 100, 157), 
+  non_terminal = c(205, 178, 239, 200, 170, 230, 250, 275, 276),
+  total = terminal + non_terminal)
+
+tag_dat <- tag_dat %>%
+  mutate(year = factor(year))
+
+```
+
+```{r binomial random model, echo =TRUE}
+# model
+home_random <- glmer(cbind(terminal, non_terminal) ~ group -1 + (1 | year), 
+                     family = binomial, 
+                     data = tag_dat)
+```
+
+
+# Results #2: Binomial regression model
+```{r model summary}
+modelsummary(
+  list("Random Effects Model" = home_random),
+   out = "gt",
+  fmt = 3,
+    statistic = "std.error",
+  stars = c("*" = 0.05, 
+            "**" = 0.01, 
+            "***" = 0.001),
+   notes = list("Standard errors shown in parenthesis."))
+```
+
+```{r model compare}
+# Extract model estimates
+fixef_results <- tidy(home_random, effects = "fixed", conf.int = TRUE)
+
+# Apply inverse logit transformation
+fixef_results <- fixef_results %>%
+  mutate(
+    probability = exp(estimate) / (1 + exp(estimate)),
+    conf.low = exp(conf.low) / (1 + exp(conf.low)),
+    conf.high = exp(conf.high) / (1 + exp(conf.high))
+  )
+
+print(as.data.frame(fixef_results))
+
+# pairwise comparison
+pairs(emmeans(home_random, ~ group, type = "fixed")) %>%
+  summary(infer = TRUE, transform = "response")
+```
+
+# Appendix
+## $\chi^2$ Test: Net versus Control
+```{r chi_square_net}
+# automate chi-sq tests 
+do_chisq_net <- function(dat_in, rtn_yr) {
+  test_yr <- 
+    dat_in %>%
+    pivot_longer(c(terminal, non_terminal), names_to = "type") %>%
+    select(-total) %>%
+    filter(year == rtn_yr) %>%
+    pivot_wider(names_from = group, values_from = value) %>%
+    select(control, net)
+  chisq.test(test_yr, simulate.p.value = TRUE)
+} # homing
+
+rtn_yrs <- c(2023, 2024)
+chisq_out_net <- lapply(rtn_yrs, function(yr) do_chisq_net(tag_dat, yr))
+names(chisq_out_net) = rtn_yrs
+
+```
+
+```{r}
+#| label: tbl-net-2023a
+#| tbl-cap: Chi-squared observed counts, 2023
+#| tbl-pos: H
+df<-chisq_out_net$`2023`$observed
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, align = "c")
+```
+
+```{r}
+#| label: tbl-net-2023b
+#| tbl-cap: Chi-squared expected counts, 2023
+#| tbl-pos: H
+df<-chisq_out_net$`2023`$expected
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, digits=2, align = "c")
+```
+
+
+```{r}
+#| label: tbl-net-2024a
+#| tbl-cap: Chi-squared observed counts, 2024
+#| tbl-pos: H
+df<-chisq_out_net$`2024`$observed
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, align = "c")
+```
+
+```{r}
+#| label: tbl-net-2024b
+#| tbl-cap: Chi-squared expected counts, 2024
+#| tbl-pos: H
+df<-chisq_out_net$`2024`$expected
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, digits=2, align = "c")
+```
+
+### *p*-values
+
+```{r p_values_net}
+p_net <- sapply(chisq_out_net, function(out) out$p.value)
+ 
+p_net %>%
+  round(., 3) %>%
+  ifelse(. < 0.001, " <0.001", .) %>%
+  noquote
+
+```
+### Combined *p*-value with Fisher's method
+
+```{r combined_net}
+sumlog(p_net) # find another way to do this
+
+```
+
+## $\chi^2$ Test: Tender versus Control
+```{r chi_square_tender}
+# automate chi-sq tests 
+do_chisq_tender <- function(dat_in, rtn_yr) {
+  test_yr <- 
+    dat_in %>%
+    pivot_longer(c(terminal, non_terminal), names_to = "type") %>%
+    select(-total) %>%
+    filter(year == rtn_yr) %>%
+    pivot_wider(names_from = group, values_from = value) %>%
+    select(control, tender)
+  chisq.test(test_yr, simulate.p.value = TRUE)
+} # homing
+
+rtn_yrs <- c(2023, 2024)
+chisq_out_tender <- lapply(rtn_yrs, function(yr) do_chisq_tender(tag_dat, yr))
+names(chisq_out_tender) = rtn_yrs
+
+```
+
+```{r}
+#| label: tbl-tender-2023a
+#| tbl-cap: Chi-squared observed counts, 2023
+#| tbl-pos: H
+df<-chisq_out_tender$`2023`$observed
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, align = "c")
+```
+
+```{r}
+#| label: tbl-tender-2023b
+#| tbl-cap: Chi-squared expected counts, 2023
+#| tbl-pos: H
+df<-chisq_out_tender$`2023`$expected
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, digits=2, align = "c")
+```
+
+
+```{r}
+#| label: tbl-tender-2024a
+#| tbl-cap: Chi-squared observed counts, 2024
+#| tbl-pos: H
+df<-chisq_out_tender$`2024`$observed
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, align = "c")
+```
+
+```{r}
+#| label: tbl-tender-2024b
+#| tbl-cap: Chi-squared expected counts, 2024
+#| tbl-pos: H
+df<-chisq_out_tender$`2024`$expected
+rownames(df) <- c("terminal", "non-terminal")
+kable(df, digits=2, align = "c")
+```
+
+### *p*-values
+
+```{r p_values_tender}
+p_tender <- sapply(chisq_out_tender, function(out) out$p.value)
+ 
+p_tender %>%
+  round(., 3) %>%
+  ifelse(. < 0.001, " <0.001", .) %>%
+  noquote
+
+```
+### Combined *p*-value with Fisher's method
+
+```{r combined_tender}
+sumlog(p_tender) 
+
+```
+
