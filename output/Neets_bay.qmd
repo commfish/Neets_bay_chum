@@ -214,19 +214,6 @@ sumlog(p)
 # Method #2: Binomial regression model
 A binomial model with proportions for recoveries in terminal areas and recoveries in non-terminal areas as the response variable and release method as the explanatory variable.  Group is a fixed effect and year is included as a random intercept term accounting for variation across different years. Intercept is removed.
 
-```{r model data}
-# model
-tag_dat <- tibble(
-  year = rep(c(2023, 2024, 2025), each = 3), # return year
-  group = rep(c("control", "net", "tender"), 3),
-  terminal = c(327, 258, 338, 150, 550, 227, 450, 100, 157), 
-  non_terminal = c(205, 178, 239, 200, 170, 230, 250, 275, 276),
-  total = terminal + non_terminal)
-
-tag_dat <- tag_dat %>%
-  mutate(year = factor(year))
-
-```
 
 ```{r binomial random model, echo =TRUE}
 # model
@@ -238,6 +225,9 @@ home_random <- glmer(cbind(terminal, non_terminal) ~ group -1 + (1 | year),
 
 # Results #2: Binomial regression model
 ```{r model summary}
+#| label: model_results
+#| tbl-cap: Binomial regression model results
+#| tbl-pos: H
 modelsummary(
   list("Random Effects Model" = home_random),
    out = "gt",
@@ -249,7 +239,11 @@ modelsummary(
    notes = list("Standard errors shown in parenthesis."))
 ```
 
-```{r model compare}
+```{r model_estimate}
+#| label: model_estimates
+#| tbl-cap: Binomial regression model output.
+#| tbl-pos: H
+
 # Extract model estimates
 fixef_results <- tidy(home_random, effects = "fixed", conf.int = TRUE)
 
@@ -261,11 +255,22 @@ fixef_results <- fixef_results %>%
     conf.high = exp(conf.high) / (1 + exp(conf.high))
   )
 
-print(as.data.frame(fixef_results))
+fixef_results <- as.data.frame(fixef_results)
+kable(fixef_results, digits= 4, align = "c")
+
+```
+
+```{r pairwise}
+#| label: pairwise
+#| tbl-cap: Pairwise comparison between release groups.
+#| tbl-pos: H
 
 # pairwise comparison
 pairs(emmeans(home_random, ~ group, type = "fixed")) %>%
-  summary(infer = TRUE, transform = "response")
+  summary(infer = TRUE, transform = "response")-> pairwise
+
+pairwise <- as.data.frame(pairwise)
+kable(pairwise, digits= 4, align = "c")
 ```
 
 # Appendix
