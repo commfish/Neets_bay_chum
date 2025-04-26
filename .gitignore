@@ -3,3 +3,14 @@
 .RData
 .Ruserdata
 .Rproj
+# RStudio files
+.Rproj.user/
+*.Rproj
+
+# History files
+.Rhistory
+.Rapp.history
+
+# Session Data files
+*.RData
+*.Rdata
